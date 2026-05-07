@@ -1,0 +1,40 @@
+# ─── Python ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ─── Virtual Environments ─────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── IDE / Editor ─────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── OS Files ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Output / Generated Reports ──────────────────────
+output/
+
+# ─── Environment & Secrets ────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+
+# ─── AWS Credentials (never commit) ──────────────────
+credentials
+config

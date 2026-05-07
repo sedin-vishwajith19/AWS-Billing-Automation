@@ -1,0 +1,184 @@
+from src.config_loader import load_accounts
+
+from src.aws_cost import (
+    get_monthly_cost,
+    get_last_5_months_cost,
+    BILLING_FILTER
+)
+
+from src.service_analysis import (
+    get_service_costs,
+    find_primary_reason
+)
+
+from src.report_generator import create_multi_account_report
+
+import boto3
+
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
+
+# Load accounts
+accounts = load_accounts()
+
+today = datetime.today()
+
+current_month_start = today.replace(day=1)
+
+previous_month_start = (
+    current_month_start
+    - relativedelta(months=1)
+)
+
+two_months_ago_start = (
+    current_month_start
+    - relativedelta(months=2)
+)
+
+all_results = []
+
+
+for account in accounts:
+
+    print("\n----------------------------")
+    print("Processing account:", account["name"])
+    print("----------------------------")
+
+    try:
+
+        # Initialize session based on provided credentials
+        if "profile" in account:
+            session = boto3.Session(
+                profile_name=account["profile"]
+            )
+        elif "access_key" in account and "secret_key" in account:
+            session = boto3.Session(
+                aws_access_key_id=account["access_key"],
+                aws_secret_access_key=account["secret_key"]
+            )
+        else:
+            raise ValueError(f"No valid credentials found for account {account['name']}")
+
+        prev_start = two_months_ago_start.strftime('%Y-%m-%d')
+        prev_end = previous_month_start.strftime('%Y-%m-%d')
+        curr_start = previous_month_start.strftime('%Y-%m-%d')
+        curr_end = current_month_start.strftime('%Y-%m-%d')
+
+        # ══════════════════════════════════════
+        # WITH TAX — Full Cost Explorer cost
+        # ══════════════════════════════════════
+
+        print("  Fetching costs with tax...")
+
+        prev_cost_with_tax = get_monthly_cost(
+            session, prev_start, prev_end
+        )
+
+        curr_cost_with_tax = get_monthly_cost(
+            session, curr_start, curr_end
+        )
+
+        prev_services_with_tax = get_service_costs(
+            session, prev_start, prev_end
+        )
+
+        curr_services_with_tax = get_service_costs(
+            session, curr_start, curr_end
+        )
+
+        reasons_with_tax = find_primary_reason(
+            prev_services_with_tax,
+            curr_services_with_tax
+        )
+
+        history_with_tax = get_last_5_months_cost(
+            session
+        )
+
+        # ══════════════════════════════════════
+        # WITHOUT TAX — Billing (filtered)
+        # ══════════════════════════════════════
+
+        print("  Fetching costs without tax...")
+
+        prev_cost_without_tax = get_monthly_cost(
+            session, prev_start, prev_end,
+            cost_filter=BILLING_FILTER
+        )
+
+        curr_cost_without_tax = get_monthly_cost(
+            session, curr_start, curr_end,
+            cost_filter=BILLING_FILTER
+        )
+
+        prev_services_without_tax = get_service_costs(
+            session, prev_start, prev_end,
+            cost_filter=BILLING_FILTER
+        )
+
+        curr_services_without_tax = get_service_costs(
+            session, curr_start, curr_end,
+            cost_filter=BILLING_FILTER
+        )
+
+        reasons_without_tax = find_primary_reason(
+            prev_services_without_tax,
+            curr_services_without_tax
+        )
+
+        history_without_tax = get_last_5_months_cost(
+            session,
+            cost_filter=BILLING_FILTER
+        )
+
+        # ---------- Store Results ----------
+
+        all_results.append({
+
+            "Account Name": account["name"],
+            "Account ID": account["id"],
+
+            # With Tax (Cost Explorer)
+            "Previous Month (With Tax)": prev_cost_with_tax,
+            "Current Month (With Tax)": curr_cost_with_tax,
+            "Reasons (With Tax)": reasons_with_tax,
+            "History (With Tax)": history_with_tax,
+
+            # Without Tax (Billing)
+            "Previous Month (Without Tax)": prev_cost_without_tax,
+            "Current Month (Without Tax)": curr_cost_without_tax,
+            "Reasons (Without Tax)": reasons_without_tax,
+            "History (Without Tax)": history_without_tax,
+
+            # Service-level breakdown (current month)
+            "Services (With Tax)": curr_services_with_tax,
+            "Services (Without Tax)": curr_services_without_tax,
+
+        })
+
+        print("✔ Success:", account["name"])
+
+    except Exception as e:
+
+        print("❌ Failed:", account["name"])
+        print("Error:", str(e))
+
+        # Continue to next account
+        continue
+
+
+# ---------- Final Report Creation ----------
+
+if len(all_results) == 0:
+
+    print("\n⚠ No successful accounts processed.")
+    print("Report not created.")
+
+else:
+
+    print("\nGenerating Excel report...")
+
+    file = create_multi_account_report(all_results)
+
+    print("✔ Report created:", file)
