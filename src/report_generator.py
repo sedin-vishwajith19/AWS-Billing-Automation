@@ -1,3 +1,5 @@
+import os
+
 from openpyxl import Workbook
 
 from openpyxl.styles import (
@@ -237,8 +239,15 @@ def create_multi_account_report(results):
     report_date = datetime.now().strftime("%B %d, %Y")
     num_accounts = len(results)
 
+    # Use /tmp in Lambda, output/ locally
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        output_dir = "/tmp"
+    else:
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+
     file_name = (
-        f"output/aws_report_"
+        f"{output_dir}/aws_report_"
         f"{previous_month_start.strftime('%B_%Y').lower()}"
         f".xlsx"
     )
