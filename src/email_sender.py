@@ -1,10 +1,13 @@
 import os
 import boto3
 from botocore.exceptions import ClientError
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
-def send_email_report(presigned_url, month_name):
+def send_email_report(file_path, month_name):
     """
-    Sends an email with the presigned S3 URL using Amazon SES.
+    Sends an email with the generated Excel report attached using Amazon SES.
 
     Environment Variables:
         SES_SENDER_EMAIL    — (Required) The email address to send from. Must be verified in SES.
@@ -25,7 +28,6 @@ def send_email_report(presigned_url, month_name):
         print("ℹ No valid recipient emails found. Skipping email notification.")
         return False
 
-    # You can customize the subject using an environment variable, or it defaults to this:
     custom_subject = os.environ.get("SES_EMAIL_SUBJECT")
     if custom_subject:
         subject = f"{custom_subject} - {month_name}"
@@ -35,11 +37,10 @@ def send_email_report(presigned_url, month_name):
     body_text = (
         f"Hello,\n\n"
         f"The AWS Monthly Cost Report for {month_name} has been successfully generated.\n\n"
-        f"You can securely download the Excel report using the following link (valid for 7 days):\n"
-        f"{presigned_url}\n\n"
+        f"Please find the report attached to this email.\n\n"
         f"This report contains the billing breakdown for all monitored AWS accounts.\n\n"
         f"Best regards,\n"
-        f"AWS Cloud Operations Team"
+        f"DevOps Team"
     )
 
     body_html = f"""<html>
@@ -47,11 +48,6 @@ def send_email_report(presigned_url, month_name):
       <style>
         body {{ font-family: Arial, sans-serif; color: #333; line-height: 1.6; }}
         .container {{ padding: 20px; }}
-        .button {{ 
-            background-color: #0052cc; color: white; padding: 10px 20px; 
-            text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;
-            margin: 15px 0;
-        }}
         .footer {{ margin-top: 30px; font-size: 12px; color: #777; }}
       </style>
     </head>
@@ -62,11 +58,9 @@ def send_email_report(presigned_url, month_name):
         <p>The AWS Monthly Cost Report for <strong>{month_name}</strong> has been successfully generated.</p>
         
         <p>This report contains the service-level billing breakdown for all monitored AWS accounts.</p>
-
-        <a href="{presigned_url}" class="button">Download Excel Report</a>
-        <p style="font-size: 12px; color: #555;"><em>Note: For security reasons, this download link will expire in 7 days.</em></p>
+        <p>Please find the generated Excel report attached to this email.</p>
         
-        <p>Best regards,<br/><strong>AWS Cloud Operations Team</strong></p>
+        <p>Best regards,<br/><strong>DevOps Team</strong></p>
       </div>
     </body>
     </html>
@@ -88,28 +82,40 @@ def send_email_report(presigned_url, month_name):
     else:
         client = boto3.client('ses', region_name=region)
 
+    # Construct email message with attachment
+    msg = MIMEMultipart('mixed')
+    msg['Subject'] = subject
+    msg['From'] = sender
+    msg['To'] = ", ".join(recipients)
+
+    # Attach email body (text and HTML)
+    msg_body = MIMEMultipart('alternative')
+    msg_body.attach(MIMEText(body_text, 'plain', 'utf-8'))
+    msg_body.attach(MIMEText(body_html, 'html', 'utf-8'))
+    msg.attach(msg_body)
+
+    # Attach Excel file
     try:
-        response = client.send_email(
-            Destination={
-                'ToAddresses': recipients,
-            },
-            Message={
-                'Body': {
-                    'Html': {
-                        'Charset': "UTF-8",
-                        'Data': body_html,
-                    },
-                    'Text': {
-                        'Charset': "UTF-8",
-                        'Data': body_text,
-                    },
-                },
-                'Subject': {
-                    'Charset': "UTF-8",
-                    'Data': subject,
-                },
-            },
+        with open(file_path, 'rb') as attachment:
+            filename = os.path.basename(file_path)
+            part = MIMEApplication(attachment.read())
+            part.add_header(
+                'Content-Disposition',
+                'attachment',
+                filename=filename
+            )
+            msg.attach(part)
+    except Exception as e:
+        print(f"❌ Failed to read or attach report file: {e}")
+        return False
+
+    try:
+        response = client.send_raw_email(
             Source=sender,
+            Destinations=recipients,
+            RawMessage={
+                'Data': msg.as_string(),
+            }
         )
     except ClientError as e:
         print(f"❌ Failed to send email: {e.response['Error']['Message']}")
@@ -117,3 +123,4 @@ def send_email_report(presigned_url, month_name):
     else:
         print(f"  ✔ Email sent successfully! Message ID: {response['MessageId']}")
         return True
+

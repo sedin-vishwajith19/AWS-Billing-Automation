@@ -197,32 +197,26 @@ def process_accounts():
 
     print("✔ Report created:", file_path)
 
-    # ---------- Upload to S3 & Send Email ----------
-
+    # ---------- Upload to S3 (Optional) ----------
     s3_uri = None
     presigned_url = None
 
     if os.environ.get("S3_BUCKET_NAME"):
-
         print("\nUploading report to S3...")
-
-        s3_result = upload_report_to_s3(file_path)
-        s3_uri = s3_result.get("s3_uri")
-        presigned_url = s3_result.get("presigned_url")
-
-        print("✔ S3 upload complete:", s3_uri)
-
-        # Send Email Notification
-        if presigned_url:
-            month_name = previous_month_start.strftime('%B %Y')
-            print("\nSending email notification...")
-            send_email_report(presigned_url, month_name)
-
+        try:
+            s3_result = upload_report_to_s3(file_path)
+            s3_uri = s3_result.get("s3_uri")
+            presigned_url = s3_result.get("presigned_url")
+            print("✔ S3 upload complete:", s3_uri)
+        except Exception as e:
+            print(f"⚠ S3 upload failed: {e}")
     else:
-        print(
-            "\nℹ S3_BUCKET_NAME not set — "
-            "skipping S3 upload and email notification."
-        )
+        print("\nℹ S3_BUCKET_NAME not set — skipping S3 upload.")
+
+    # ---------- Send Email Notification ----------
+    month_name = previous_month_start.strftime('%B %Y')
+    print("\nSending email notification...")
+    send_email_report(file_path, month_name)
 
     return {
         "status": "success",
