@@ -1,4 +1,5 @@
 import os
+import smtplib
 import boto3
 from botocore.exceptions import ClientError
 from email.mime.multipart import MIMEMultipart
@@ -7,16 +8,22 @@ from email.mime.application import MIMEApplication
 
 def send_email_report(object_url, month_name, file_path=None):
     """
-    Sends an email notification via Amazon SES with the S3 object download link
-    and optional Excel report attachment.
+    Sends an email notification via Amazon SES (using SMTP or boto3 client)
+    with the S3 object download link and optional Excel report attachment.
 
-    Environment Variables:
+    Environment Variables for SES SMTP:
+        SES_SMTP_HOST       — (Optional) SES SMTP Endpoint host (e.g. email-smtp.ap-south-1.amazonaws.com).
+        SES_SMTP_PORT       — (Optional) SES SMTP Port (defaults to 587).
+        SES_SMTP_USERNAME   — (Optional) SES SMTP Username.
+        SES_SMTP_PASSWORD   — (Optional) SES SMTP Password.
+
+    Environment Variables for SES API (Fallback):
         SES_SENDER_EMAIL    — (Required) The email address to send from. Must be verified in SES.
         SES_RECIPIENT_EMAIL — (Required) Comma-separated list of recipient emails.
         AWS_REGION          — (Optional) AWS region for SES. Defaults to 'ap-south-1'.
     """
-    sender = os.environ.get("SES_SENDER_EMAIL")
-    recipient_str = os.environ.get("SES_RECIPIENT_EMAIL")
+    sender = os.environ.get("SES_SENDER_EMAIL") or os.environ.get("SMTP_SENDER_EMAIL")
+    recipient_str = os.environ.get("SES_RECIPIENT_EMAIL") or os.environ.get("SMTP_RECIPIENT_EMAIL")
     region = os.environ.get("AWS_REGION", "ap-south-1")
 
     if not sender or not recipient_str:
@@ -89,22 +96,6 @@ def send_email_report(object_url, month_name, file_path=None):
     </html>
     """
 
-    print(f"  Sending email to {len(recipients)} recipient(s) via SES...")
-
-    # For local testing vs Lambda execution
-    s3_access_key = os.environ.get("S3_AWS_ACCESS_KEY_ID")
-    s3_secret_key = os.environ.get("S3_AWS_SECRET_ACCESS_KEY")
-
-    if s3_access_key and s3_secret_key:
-        ses_session = boto3.Session(
-            aws_access_key_id=s3_access_key,
-            aws_secret_access_key=s3_secret_key,
-            region_name=region
-        )
-        client = ses_session.client('ses')
-    else:
-        client = boto3.client('ses', region_name=region)
-
     # Construct email message
     msg = MIMEMultipart('mixed')
     msg['Subject'] = subject
@@ -131,6 +122,43 @@ def send_email_report(object_url, month_name, file_path=None):
                 msg.attach(part)
         except Exception as e:
             print(f"⚠ Failed to read or attach report file: {e}")
+
+    # Check if SES SMTP credentials are provided in .env
+    smtp_host = os.environ.get("SES_SMTP_HOST") or os.environ.get("SMTP_HOST") or os.environ.get("SES_ENDPOINT")
+    smtp_port_val = os.environ.get("SES_SMTP_PORT") or os.environ.get("SMTP_PORT") or "587"
+    smtp_user = os.environ.get("SES_SMTP_USERNAME") or os.environ.get("SMTP_USERNAME")
+    smtp_pass = os.environ.get("SES_SMTP_PASSWORD") or os.environ.get("SMTP_PASSWORD")
+
+    if smtp_host:
+        try:
+            smtp_port = int(smtp_port_val)
+            print(f"  Sending email to {len(recipients)} recipient(s) via SES SMTP ({smtp_host}:{smtp_port})...")
+            server = smtplib.SMTP(smtp_host, smtp_port)
+            server.starttls()
+            if smtp_user and smtp_pass:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(sender, recipients, msg.as_string())
+            server.quit()
+            print("  ✔ Email sent successfully via SES SMTP!")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to send email via SES SMTP: {e}")
+            return False
+
+    # Fallback to AWS SDK boto3 SES client
+    print(f"  Sending email to {len(recipients)} recipient(s) via boto3 SES SDK...")
+    s3_access_key = os.environ.get("S3_AWS_ACCESS_KEY_ID")
+    s3_secret_key = os.environ.get("S3_AWS_SECRET_ACCESS_KEY")
+
+    if s3_access_key and s3_secret_key:
+        ses_session = boto3.Session(
+            aws_access_key_id=s3_access_key,
+            aws_secret_access_key=s3_secret_key,
+            region_name=region
+        )
+        client = ses_session.client('ses')
+    else:
+        client = boto3.client('ses', region_name=region)
 
     try:
         response = client.send_raw_email(
