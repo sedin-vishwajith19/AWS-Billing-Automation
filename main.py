@@ -1,3 +1,19 @@
+import os
+import boto3
+
+# Auto-load .env file for local execution if present
+if os.path.exists(".env"):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        with open(".env", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ.setdefault(key.strip(), val.strip().strip('"\''))
+
 from src.config_loader import load_accounts
 
 from src.aws_cost import (
@@ -14,9 +30,6 @@ from src.service_analysis import (
 from src.report_generator import create_multi_account_report
 from src.s3_uploader import upload_report_to_s3
 from src.email_sender import send_email_report
-
-import os
-import boto3
 
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -199,15 +212,17 @@ def process_accounts():
 
     # ---------- Upload to S3 (Optional) ----------
     s3_uri = None
-    presigned_url = None
+    object_url = None
 
     if os.environ.get("S3_BUCKET_NAME"):
         print("\nUploading report to S3...")
         try:
             s3_result = upload_report_to_s3(file_path)
             s3_uri = s3_result.get("s3_uri")
-            presigned_url = s3_result.get("presigned_url")
+            object_url = s3_result.get("object_url")
             print("✔ S3 upload complete:", s3_uri)
+            if object_url:
+                print("✔ S3 Object URL:", object_url)
         except Exception as e:
             print(f"⚠ S3 upload failed: {e}")
     else:
@@ -216,13 +231,13 @@ def process_accounts():
     # ---------- Send Email Notification ----------
     month_name = previous_month_start.strftime('%B %Y')
     print("\nSending email notification...")
-    send_email_report(file_path, month_name)
+    send_email_report(object_url, month_name, file_path)
 
     return {
         "status": "success",
         "file_path": file_path,
         "s3_uri": s3_uri,
-        "presigned_url": presigned_url
+        "object_url": object_url
     }
 
 

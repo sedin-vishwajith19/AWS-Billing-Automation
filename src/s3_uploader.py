@@ -1,5 +1,6 @@
 import os
 import boto3
+from botocore.exceptions import ClientError
 
 
 def upload_report_to_s3(file_path):
@@ -15,6 +16,8 @@ def upload_report_to_s3(file_path):
         S3_BUCKET_NAME          — (Required) Target S3 bucket name.
         S3_KEY_PREFIX           — (Optional) Prefix/folder in the bucket.
                                   Defaults to 'reports/'.
+        S3_OBJECT_ACL           — (Optional) ACL for public access.
+                                  Defaults to 'public-read'. Set to 'none' to omit.
         S3_AWS_ACCESS_KEY_ID    — (Optional) RF Sandbox access key
                                   for local runs. Not needed in Lambda.
         S3_AWS_SECRET_ACCESS_KEY— (Optional) RF Sandbox secret key
@@ -23,7 +26,7 @@ def upload_report_to_s3(file_path):
                                   Defaults to 'ap-south-1'.
 
     Returns:
-        str — The full S3 URI (s3://bucket/key) of the uploaded file.
+        dict with 's3_uri' and 'object_url' keys on success.
 
     Raises:
         ValueError  — If S3_BUCKET_NAME is not set.
@@ -67,34 +70,53 @@ def upload_report_to_s3(file_path):
         # In Lambda — uses execution role (RF Sandbox)
         s3_client = boto3.client("s3", region_name=region)
 
-    s3_client.upload_file(
-        Filename=file_path,
-        Bucket=bucket_name,
-        Key=s3_key,
-        ExtraArgs={
-            "ContentType": (
-                "application/vnd.openxmlformats-"
-                "officedocument.spreadsheetml.sheet"
+    extra_args = {
+        "ContentType": (
+            "application/vnd.openxmlformats-"
+            "officedocument.spreadsheetml.sheet"
+        )
+    }
+
+    s3_acl = os.environ.get("S3_OBJECT_ACL", "public-read")
+    if s3_acl and s3_acl.lower() != "none":
+        extra_args["ACL"] = s3_acl
+
+    try:
+        s3_client.upload_file(
+            Filename=file_path,
+            Bucket=bucket_name,
+            Key=s3_key,
+            ExtraArgs=extra_args
+        )
+    except Exception as e:
+        # If bucket policy disables ACLs (AccessControlListNotSupported / BucketOwnerEnforced), retry without ACL
+        if "AccessControlListNotSupported" in str(e) or "InvalidRequest" in str(e) or "ACL" in str(e):
+            print("  ℹ Bucket disables ACLs (Bucket owner enforced) — retrying upload without ACL...")
+            extra_args.pop("ACL", None)
+            s3_client.upload_file(
+                Filename=file_path,
+                Bucket=bucket_name,
+                Key=s3_key,
+                ExtraArgs=extra_args
             )
-        }
-    )
+        else:
+            raise e
 
     s3_uri = f"s3://{bucket_name}/{s3_key}"
 
     print(f"  ✔ Upload complete: {s3_uri}")
 
-    # Generate a presigned URL valid for 7 days (604800 seconds)
-    try:
-        presigned_url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': bucket_name, 'Key': s3_key},
-            ExpiresIn=604800
-        )
-    except Exception as e:
-        print(f"  ⚠ Failed to generate presigned URL: {e}")
-        presigned_url = None
+    # Build direct permanent S3 object URL (without expiration)
+    s3_base_url = os.environ.get("S3_BASE_URL")
+    if s3_base_url:
+        object_url = f"{s3_base_url.rstrip('/')}/{s3_key.lstrip('/')}"
+    else:
+        object_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{s3_key.lstrip('/')}"
+
+    print(f"  ✔ Object URL: {object_url}")
 
     return {
         "s3_uri": s3_uri,
-        "presigned_url": presigned_url
+        "object_url": object_url
     }
+

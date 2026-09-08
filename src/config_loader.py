@@ -53,12 +53,18 @@ def load_accounts():
         return accounts
 
     # Fallback to YAML file
-    with open("config/accounts.yaml", "r") as file:
-        config = yaml.safe_load(file)
+    yaml_path = "config/accounts.yaml"
+    if os.path.exists(yaml_path):
+        with open(yaml_path, "r") as file:
+            config = yaml.safe_load(file)
 
-    print(
-        f"✔ Loaded {len(config['accounts'])} account(s) "
-        f"from config/accounts.yaml"
+        print(
+            f"✔ Loaded {len(config['accounts'])} account(s) "
+            f"from config/accounts.yaml"
+        )
+        return config["accounts"]
+
+    raise ValueError(
+        "No accounts configuration found! Please set the AWS_ACCOUNTS "
+        "environment variable in your .env file or create config/accounts.yaml."
     )
-
-    return config["accounts"]

@@ -5,9 +5,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
-def send_email_report(file_path, month_name):
+def send_email_report(object_url, month_name, file_path=None):
     """
-    Sends an email with the generated Excel report attached using Amazon SES.
+    Sends an email notification via Amazon SES with the S3 object download link
+    and optional Excel report attachment.
 
     Environment Variables:
         SES_SENDER_EMAIL    — (Required) The email address to send from. Must be verified in SES.
@@ -34,14 +35,35 @@ def send_email_report(file_path, month_name):
     else:
         subject = f"📊 AWS Monthly Cost Report - {month_name}"
     
-    body_text = (
-        f"Hello,\n\n"
+    body_text_parts = [
+        f"Hello,\n\n",
         f"The AWS Monthly Cost Report for {month_name} has been successfully generated.\n\n"
-        f"Please find the report attached to this email.\n\n"
+    ]
+
+    if object_url:
+        body_text_parts.append(
+            f"You can download the Excel report using the following link:\n{object_url}\n\n"
+        )
+    if file_path:
+        body_text_parts.append("The report is also attached to this email.\n\n")
+
+    body_text_parts.append(
         f"This report contains the billing breakdown for all monitored AWS accounts.\n\n"
         f"Best regards,\n"
         f"DevOps Team"
     )
+    body_text = "".join(body_text_parts)
+
+    download_section_html = ""
+    if object_url:
+        download_section_html = f"""
+        <p>
+            <a href="{object_url}" class="button" style="background-color: #0052cc; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin: 15px 0;">Download Excel Report</a>
+        </p>
+        <p style="font-size: 12px; color: #555;">Direct link: <a href="{object_url}">{object_url}</a></p>
+        """
+
+    attachment_text_html = "<p>Please find the generated Excel report attached to this email.</p>" if file_path else ""
 
     body_html = f"""<html>
     <head>
@@ -58,7 +80,8 @@ def send_email_report(file_path, month_name):
         <p>The AWS Monthly Cost Report for <strong>{month_name}</strong> has been successfully generated.</p>
         
         <p>This report contains the service-level billing breakdown for all monitored AWS accounts.</p>
-        <p>Please find the generated Excel report attached to this email.</p>
+        {download_section_html}
+        {attachment_text_html}
         
         <p>Best regards,<br/><strong>DevOps Team</strong></p>
       </div>
@@ -82,7 +105,7 @@ def send_email_report(file_path, month_name):
     else:
         client = boto3.client('ses', region_name=region)
 
-    # Construct email message with attachment
+    # Construct email message
     msg = MIMEMultipart('mixed')
     msg['Subject'] = subject
     msg['From'] = sender
@@ -94,20 +117,20 @@ def send_email_report(file_path, month_name):
     msg_body.attach(MIMEText(body_html, 'html', 'utf-8'))
     msg.attach(msg_body)
 
-    # Attach Excel file
-    try:
-        with open(file_path, 'rb') as attachment:
-            filename = os.path.basename(file_path)
-            part = MIMEApplication(attachment.read())
-            part.add_header(
-                'Content-Disposition',
-                'attachment',
-                filename=filename
-            )
-            msg.attach(part)
-    except Exception as e:
-        print(f"❌ Failed to read or attach report file: {e}")
-        return False
+    # Attach Excel file if available
+    if file_path and os.path.exists(file_path):
+        try:
+            with open(file_path, 'rb') as attachment:
+                filename = os.path.basename(file_path)
+                part = MIMEApplication(attachment.read())
+                part.add_header(
+                    'Content-Disposition',
+                    'attachment',
+                    filename=filename
+                )
+                msg.attach(part)
+        except Exception as e:
+            print(f"⚠ Failed to read or attach report file: {e}")
 
     try:
         response = client.send_raw_email(
@@ -123,4 +146,5 @@ def send_email_report(file_path, month_name):
     else:
         print(f"  ✔ Email sent successfully! Message ID: {response['MessageId']}")
         return True
+
 
