@@ -1,10 +1,21 @@
 import os
 import smtplib
+import base64
 import boto3
 from botocore.exceptions import ClientError
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from email.utils import formatdate, parseaddr
+
+def _decode_credential(val):
+    if not val:
+        return val
+    val_str = val.strip()
+    try:
+        return base64.b64decode(val_str).decode('utf-8')
+    except Exception:
+        return val_str
 
 def send_email_report(object_url, month_name, file_path=None):
     """
@@ -101,6 +112,7 @@ def send_email_report(object_url, month_name, file_path=None):
     msg['Subject'] = subject
     msg['From'] = sender
     msg['To'] = ", ".join(recipients)
+    msg['Date'] = formatdate(localtime=True)
 
     # Attach email body (text and HTML)
     msg_body = MIMEMultipart('alternative')
@@ -113,31 +125,41 @@ def send_email_report(object_url, month_name, file_path=None):
         try:
             with open(file_path, 'rb') as attachment:
                 filename = os.path.basename(file_path)
-                part = MIMEApplication(attachment.read())
+                part = MIMEApplication(
+                    attachment.read(),
+                    _subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
                 part.add_header(
                     'Content-Disposition',
                     'attachment',
                     filename=filename
                 )
                 msg.attach(part)
+                print(f"  ✔ Attached file: {filename}")
         except Exception as e:
             print(f"⚠ Failed to read or attach report file: {e}")
+    else:
+        if file_path:
+            print(f"⚠ Report file not found at: {file_path}")
 
     # Check if SES SMTP credentials are provided in .env
     smtp_host = os.environ.get("SES_SMTP_HOST") or os.environ.get("SMTP_HOST") or os.environ.get("SES_ENDPOINT")
     smtp_port_val = os.environ.get("SES_SMTP_PORT") or os.environ.get("SMTP_PORT") or "587"
-    smtp_user = os.environ.get("SES_SMTP_USERNAME") or os.environ.get("SMTP_USERNAME")
-    smtp_pass = os.environ.get("SES_SMTP_PASSWORD") or os.environ.get("SMTP_PASSWORD")
+    smtp_user_raw = os.environ.get("SES_SMTP_USERNAME") or os.environ.get("SMTP_USERNAME")
+    smtp_pass_raw = os.environ.get("SES_SMTP_PASSWORD") or os.environ.get("SMTP_PASSWORD")
+    smtp_user = _decode_credential(smtp_user_raw)
+    smtp_pass = _decode_credential(smtp_pass_raw)
 
     if smtp_host:
         try:
             smtp_port = int(smtp_port_val)
-            print(f"  Sending email to {len(recipients)} recipient(s) via SES SMTP ({smtp_host}:{smtp_port})...")
+            print(f"  Sending email to {recipients} from {sender} via SES SMTP ({smtp_host}:{smtp_port})...")
             server = smtplib.SMTP(smtp_host, smtp_port)
             server.starttls()
             if smtp_user and smtp_pass:
                 server.login(smtp_user, smtp_pass)
-            server.sendmail(sender, recipients, msg.as_string())
+            envelope_sender = parseaddr(sender)[1] or sender
+            server.sendmail(envelope_sender, recipients, msg.as_string())
             server.quit()
             print("  ✔ Email sent successfully via SES SMTP!")
             return True
