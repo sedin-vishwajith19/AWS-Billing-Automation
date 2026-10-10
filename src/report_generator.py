@@ -309,9 +309,7 @@ def create_multi_account_report(results):
         summary_rows.append([
             i + 1,
             row["Account Name"],
-            f"${curr_excl:,.2f}",
-            f"${tax:,.2f}",
-            f"${curr_incl:,.2f}"
+            f"${curr_excl:,.2f}"
         ])
 
         observation_rows.append([
@@ -325,15 +323,11 @@ def create_multi_account_report(results):
         ])
 
         total_excl += curr_excl
-        total_tax += tax
-        total_incl += curr_incl
 
     summary_rows.append([
         "",
         "Total",
-        f"${total_excl:,.2f}",
-        f"${total_tax:,.2f}",
-        f"${total_incl:,.2f}"
+        f"${total_excl:,.2f}"
     ])
 
     # ---------- Create Workbook ----------
@@ -349,7 +343,7 @@ def create_multi_account_report(results):
     ws1.sheet_properties.tabColor = TAB_COLOR_SUMMARY
 
     # Title
-    ws1.merge_cells("A1:E1")
+    ws1.merge_cells("A1:C1")
     title_cell = ws1["A1"]
     title_cell.value = (
         f"Account Cost Summary — {curr_month_name}"
@@ -364,7 +358,7 @@ def create_multi_account_report(results):
     title_cell.border = Border()
 
     # Subtitle
-    ws1.merge_cells("A2:E2")
+    ws1.merge_cells("A2:C2")
     sub_cell = ws1["A2"]
     sub_cell.value = f"Generated on {report_date}"
     sub_cell.font = Font(
@@ -376,26 +370,22 @@ def create_multi_account_report(results):
     sub_cell.alignment = LEFT
 
     # Separator line under subtitle
-    for col in range(1, 6):
+    for col in range(1, 4):
         ws1.cell(row=3, column=col).border = _bottom_border()
 
     # Column widths
     ws1.column_dimensions["A"].width = 8
     ws1.column_dimensions["B"].width = 32
     ws1.column_dimensions["C"].width = 22
-    ws1.column_dimensions["D"].width = 16
-    ws1.column_dimensions["E"].width = 22
 
     summary_headers = [
         "SN", "Account Name",
-        "Cost (Excl. Tax)", "Tax",
-        "Total (Incl. Tax)"
+        "Total Cost"
     ]
 
     # Header row (row 4)
     _write_cells(ws1, 4, summary_headers)
-    _style_header_row(ws1, 4, 5)
-    _style_tax_header(ws1, 4, 4)  # Tax column purple
+    _style_header_row(ws1, 4, 3)
 
     # Data rows
     row = 5
@@ -410,7 +400,7 @@ def create_multi_account_report(results):
 
     # Stripes (exclude total row)
     if num_accounts > 0:
-        _apply_stripes(ws1, data_start, total_row - 1, 5)
+        _apply_stripes(ws1, data_start, total_row - 1, 3)
 
     # Alignment
     for row_idx in range(data_start, total_row + 1):
@@ -418,15 +408,11 @@ def create_multi_account_report(results):
         ws1.cell(row=row_idx, column=1).alignment = CENTER
         ws1.cell(row=row_idx, column=2).alignment = LEFT
         ws1.cell(row=row_idx, column=3).alignment = RIGHT
-        ws1.cell(row=row_idx, column=4).alignment = RIGHT
-        ws1.cell(row=row_idx, column=5).alignment = RIGHT
 
     # Total row styling
-    _style_total_row(ws1, total_row, 5)
+    _style_total_row(ws1, total_row, 3)
     ws1.cell(row=total_row, column=2).alignment = LEFT
     ws1.cell(row=total_row, column=3).alignment = RIGHT
-    ws1.cell(row=total_row, column=4).alignment = RIGHT
-    ws1.cell(row=total_row, column=5).alignment = RIGHT
 
     ws1.freeze_panes = "A5"
 
@@ -512,14 +498,12 @@ def create_multi_account_report(results):
         # Auto-calculate row height based on content length
         reason_text = reason_cell.value or ""
         col_g_width = 100  # matches column G width
-        # Approximate chars per line (width * ~1.1 chars)
         chars_per_line = int(col_g_width * 1.1)
         if chars_per_line > 0 and len(reason_text) > 0:
             num_lines = max(
                 1,
-                -(-len(reason_text) // chars_per_line)  # ceiling div
+                -(-len(reason_text) // chars_per_line)
             )
-            # 15 points per line, minimum 20
             ws2.row_dimensions[row_idx].height = max(
                 20, num_lines * 18
             )
@@ -531,23 +515,18 @@ def create_multi_account_report(results):
         status_val = status_cell.value
 
         if status_val == "Increased":
-
             status_cell.fill = _fill(STATUS_INCREASED_BG)
             status_cell.font = _body_font(
                 bold=True,
                 color=STATUS_INCREASED_FONT
             )
-
         elif status_val == "Decreased":
-
             status_cell.fill = _fill(STATUS_DECREASED_BG)
             status_cell.font = _body_font(
                 bold=True,
                 color=STATUS_DECREASED_FONT
             )
-
         elif status_val == "Stable":
-
             status_cell.fill = _fill(STATUS_STABLE_BG)
             status_cell.font = _body_font(
                 bold=True,
@@ -578,7 +557,7 @@ def create_multi_account_report(results):
     ws3.sheet_properties.tabColor = TAB_COLOR_HISTORY
 
     # Sheet heading
-    ws3.merge_cells("A1:D1")
+    ws3.merge_cells("A1:B1")
     sheet_title = ws3["A1"]
     sheet_title.value = "Last 5 Months Billing History"
     sheet_title.font = Font(
@@ -590,7 +569,7 @@ def create_multi_account_report(results):
     sheet_title.alignment = LEFT
 
     # Subtitle
-    ws3.merge_cells("A2:D2")
+    ws3.merge_cells("A2:B2")
     sub_cell = ws3["A2"]
     sub_cell.value = f"Generated on {report_date}"
     sub_cell.font = Font(
@@ -602,17 +581,14 @@ def create_multi_account_report(results):
     sub_cell.alignment = LEFT
 
     # Separator
-    for col in range(1, 5):
+    for col in range(1, 3):
         ws3.cell(row=3, column=col).border = _bottom_border()
 
-    ws3.column_dimensions["A"].width = 16
-    ws3.column_dimensions["B"].width = 22
-    ws3.column_dimensions["C"].width = 16
-    ws3.column_dimensions["D"].width = 22
+    ws3.column_dimensions["A"].width = 18
+    ws3.column_dimensions["B"].width = 24
 
     history_headers = [
-        "Month", "Cost (Excl. Tax)",
-        "Tax", "Total (Incl. Tax)"
+        "Month", "Total Cost"
     ]
 
     current_row = 5
@@ -620,15 +596,13 @@ def create_multi_account_report(results):
     for result in results:
 
         account_name = result["Account Name"]
-
-        history_with_tax = result["History (With Tax)"]
         history_without_tax = result["History (Without Tax)"]
 
         # ── Account Title Row ──
 
         ws3.merge_cells(
             start_row=current_row, start_column=1,
-            end_row=current_row, end_column=4
+            end_row=current_row, end_column=2
         )
 
         title_cell = ws3.cell(row=current_row, column=1)
@@ -642,18 +616,16 @@ def create_multi_account_report(results):
         title_cell.fill = _fill(ACCOUNT_TITLE_BG)
         title_cell.alignment = LEFT
 
-        for c in range(2, 5):
-            ws3.cell(
-                row=current_row, column=c
-            ).fill = _fill(ACCOUNT_TITLE_BG)
+        ws3.cell(
+            row=current_row, column=2
+        ).fill = _fill(ACCOUNT_TITLE_BG)
 
         current_row += 1
 
         # ── Header Row ──
 
         _write_cells(ws3, current_row, history_headers)
-        _style_header_row(ws3, current_row, 4)
-        _style_tax_header(ws3, current_row, 3)  # Tax purple
+        _style_header_row(ws3, current_row, 2)
 
         current_row += 1
 
@@ -666,32 +638,24 @@ def create_multi_account_report(results):
             cost_excl = round(
                 history_without_tax[j]["Cost"], 2
             )
-            cost_incl = round(
-                history_with_tax[j]["Cost"], 2
-            )
-            tax = round(cost_incl - cost_excl, 2)
 
             _write_cells(ws3, current_row, [
                 history_without_tax[j]["Month"],
-                f"${cost_excl:,.2f}",
-                f"${tax:,.2f}",
-                f"${cost_incl:,.2f}"
+                f"${cost_excl:,.2f}"
             ])
 
             current_row += 1
 
         h_end = current_row - 1
 
-        _apply_stripes(ws3, h_start, h_end, 4)
+        _apply_stripes(ws3, h_start, h_end, 2)
 
         for row_idx in range(h_start, h_end + 1):
             ws3.cell(row=row_idx, column=1).alignment = CENTER
             ws3.cell(row=row_idx, column=2).alignment = RIGHT
-            ws3.cell(row=row_idx, column=3).alignment = RIGHT
-            ws3.cell(row=row_idx, column=4).alignment = RIGHT
 
         # Gap before next account
-        current_row += 3
+        current_row += 2
 
     # Remove default freeze on sheet 3 (multiple tables)
     ws3.freeze_panes = None

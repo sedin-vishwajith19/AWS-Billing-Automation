@@ -54,19 +54,17 @@ def send_email_report(object_url, month_name, file_path=None):
         subject = f"📊 AWS Monthly Cost Report - {month_name}"
     
     body_text_parts = [
-        f"Hello,\n\n",
-        f"The AWS Monthly Cost Report for {month_name} has been successfully generated.\n\n"
+        f"AWS Monthly Cost Report – {month_name}\n\n",
+        f"Hello Team,\n\n",
+        f"Please find attached the AWS Monthly Cost Report for {month_name}, containing the account-level and service-level billing breakdown for our AWS workload accounts.\n\n"
     ]
 
     if object_url:
         body_text_parts.append(
-            f"You can download the Excel report using the following link:\n{object_url}\n\n"
+            f"Report Download URL:\n{object_url}\n\n"
         )
-    if file_path:
-        body_text_parts.append("The report is also attached to this email.\n\n")
 
     body_text_parts.append(
-        f"This report contains the billing breakdown for all monitored AWS accounts.\n\n"
         f"Best regards,\n"
         f"DevOps Team"
     )
@@ -75,37 +73,55 @@ def send_email_report(object_url, month_name, file_path=None):
     download_section_html = ""
     if object_url:
         download_section_html = f"""
-        <p>
-            <a href="{object_url}" class="button" style="background-color: #0052cc; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin: 15px 0;">Download Excel Report</a>
-        </p>
-        <p style="font-size: 12px; color: #555;">Direct link: <a href="{object_url}">{object_url}</a></p>
+        <div style="text-align: center; margin: 24px 0 16px 0;">
+            <a href="{object_url}" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #ffffff !important; font-weight: 600; font-size: 15px; text-decoration: none; padding: 12px 28px; border-radius: 6px; display: inline-block; box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);">📊 Download Excel Report</a>
+        </div>
         """
 
-    attachment_text_html = "<p>Please find the generated Excel report attached to this email.</p>" if file_path else ""
+    body_html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS Monthly Cost Report</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 0; -webkit-font-smoothing: antialiased;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f6f9; padding: 30px 0;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; text-align: left;">
+          <!-- Header Banner -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 30px; color: #ffffff;">
+              <span style="display: inline-block; background-color: rgba(255, 255, 255, 0.15); color: #38bdf8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 4px 10px; border-radius: 20px; margin-bottom: 12px;">AWS Monthly Cost Report</span>
+              <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: #ffffff;">AWS Monthly Cost Report – {month_name}</h1>
+            </td>
+          </tr>
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 32px 30px; color: #334155; font-size: 15px; line-height: 1.6;">
+              <div style="font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 16px;">AWS Monthly Cost Report – {month_name}</div>
+              <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">Hello Team,</div>
+              <p style="margin: 0 0 16px 0;">Please find attached the <strong>AWS Monthly Cost Report for {month_name}</strong>, containing the account-level and service-level billing breakdown for our AWS workload accounts.</p>
 
-    body_html = f"""<html>
-    <head>
-      <style>
-        body {{ font-family: Arial, sans-serif; color: #333; line-height: 1.6; }}
-        .container {{ padding: 20px; }}
-        .footer {{ margin-top: 30px; font-size: 12px; color: #777; }}
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h2>AWS Monthly Cost Report - {month_name}</h2>
-        <p>Hello,</p>
-        <p>The AWS Monthly Cost Report for <strong>{month_name}</strong> has been successfully generated.</p>
-        
-        <p>This report contains the service-level billing breakdown for all monitored AWS accounts.</p>
-        {download_section_html}
-        {attachment_text_html}
-        
-        <p>Best regards,<br/><strong>DevOps Team</strong></p>
-      </div>
-    </body>
-    </html>
-    """
+              {download_section_html}
+
+              <p style="margin-top: 24px; line-height: 1.5;">Best regards,<br><strong style="color: #0f172a;">DevOps Team</strong></p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 20px 30px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8;">
+              <p style="margin: 0;">© AWS Monthly Cost & Billing Automation</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
 
     # Construct email message
     msg = MIMEMultipart('mixed')
@@ -150,22 +166,24 @@ def send_email_report(object_url, month_name, file_path=None):
     smtp_user = _decode_credential(smtp_user_raw)
     smtp_pass = _decode_credential(smtp_pass_raw)
 
-    if smtp_host:
+    if smtp_host and smtp_user and smtp_pass:
         try:
             smtp_port = int(smtp_port_val)
             print(f"  Sending email to {recipients} from {sender} via SES SMTP ({smtp_host}:{smtp_port})...")
             server = smtplib.SMTP(smtp_host, smtp_port)
             server.starttls()
-            if smtp_user and smtp_pass:
-                server.login(smtp_user, smtp_pass)
+            server.login(smtp_user, smtp_pass)
             envelope_sender = parseaddr(sender)[1] or sender
             server.sendmail(envelope_sender, recipients, msg.as_string())
             server.quit()
             print("  ✔ Email sent successfully via SES SMTP!")
             return True
         except Exception as e:
-            print(f"❌ Failed to send email via SES SMTP: {e}")
-            return False
+            print(f"⚠ Failed to send email via SES SMTP: {e}")
+            print("  Falling back to boto3 SES client...")
+    elif smtp_host:
+        print("⚠ SES_SMTP_HOST is set, but SES_SMTP_USERNAME or SES_SMTP_PASSWORD is missing in environment variables.")
+        print("  Falling back to boto3 SES client...")
 
     # Fallback to AWS SDK boto3 SES client
     print(f"  Sending email to {len(recipients)} recipient(s) via boto3 SES SDK...")
